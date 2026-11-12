@@ -1,71 +1,107 @@
+"""Rotate, crop the PSA label off, and resize the scraped card images.
+
+USAGE:
+    python image_cropping.py --parent_dir /path/to/final_10k --output_dir /path/to/final10k_cropped
+"""
+import argparse
 import os
+
+import numpy as np
 from PIL import Image
 
-# make a list of folders to go through and crop the images
-parent_dir = "/Users/brianmiller/Desktop/trading_card_data/final_10k"
-output_dir = "/Users/brianmiller/Desktop/trading_card_data/final10k_cropped"
-folder_names = ["psa1", "psa2", "psa3", "psa4", "psa5", "psa6", "psa7", "psa8", "psa9", "psa10"]
-
-
-list_of_folders = [parent_dir + '/' + i for i in folder_names]
+FOLDER_NAMES = ["psa1", "psa2", "psa3", "psa4", "psa5", "psa6", "psa7", "psa8", "psa9", "psa10"]
 
 # Define the target pixel size for scaling images
-target_pixel_size = 400
+TARGET_PIXEL_SIZE = 400
 
-for folder_path in list_of_folders:
-    for filename in os.listdir(folder_path):
-        if filename.lower().endswith('.jpg'):
+# The PSA label is only looked for in the top and bottom parts of the slab
+LABEL_SEARCH_FRACTION = 0.3
+
+# A row counts as part of the red label when this share of its middle half is red
+RED_ROW_FRACTION = 0.5
+
+
+def find_red_rows(im):
+    """Return a boolean array, one entry per pixel row, that is True where the row is mostly label-red."""
+    pixels = np.asarray(im.convert("RGB")).astype(int)
+    width = pixels.shape[1]
+    middle = pixels[:, width // 4: max(width - width // 4, width // 4 + 1)]
+    r, g, b = middle[..., 0], middle[..., 1], middle[..., 2]
+    red = (r > 150) & (g < 90) & (b < 90)
+    return red.mean(axis=1) >= RED_ROW_FRACTION
+
+
+def find_crop_bounds(im):
+    """
+    Work out which rows of the (portrait) image to keep so that the PSA label is cut off.
+    Args:
+        im (PIL.Image): the slab image, already rotated to portrait
+    Returns:
+        (crop_top, crop_bottom): the first row to keep, and the row after the last one to keep
+    """
+    height = im.size[1]
+    band = int(height * LABEL_SEARCH_FRACTION)
+    red_rows = find_red_rows(im)
+    top_rows = np.flatnonzero(red_rows[:band])
+    bottom_rows = np.flatnonzero(red_rows[height - band:]) + (height - band)
+
+    if top_rows.size:
+        # the label is at the top: keep everything below its last red row
+        return int(top_rows[-1]) + 1, height
+    if bottom_rows.size:
+        # the slab is upside down: keep everything above the label
+        return 0, int(bottom_rows[0])
+    # no label found, assume it is in the top 1/5th of the image
+    return int(height / 5), height
+
+
+def crop_image(im):
+    """Rotate to portrait, crop off the PSA label and scale to TARGET_PIXEL_SIZE wide."""
+    im = im.convert("RGB")
+    width, height = im.size
+
+    # Step 1: Rotate the image if the x-axis is greater than the y-axis
+    if width > height:
+        im = im.rotate(90, expand=True)  # Rotate the image by 90 degrees counter-clockwise
+        width, height = im.size
+
+    # Step 2: Crop the label off
+    crop_top, crop_bottom = find_crop_bounds(im)
+    cropped_img = im.crop((0, crop_top, width, crop_bottom))
+
+    # Step 3: Scale the image to the target pixel size while maintaining its aspect ratio
+    cropped_width, cropped_height = cropped_img.size
+    if cropped_width > TARGET_PIXEL_SIZE or cropped_height > TARGET_PIXEL_SIZE:
+        new_height = int(TARGET_PIXEL_SIZE * (cropped_height / cropped_width))
+        cropped_img = cropped_img.resize((TARGET_PIXEL_SIZE, new_height))
+    return cropped_img
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Crop the PSA label off the scraped card images')
+    parser.add_argument('--parent_dir', default="/Users/brianmiller/Desktop/trading_card_data/final_10k",
+                        help='Folder containing the psa1 ... psa10 folders of images')
+    parser.add_argument('--output_dir', default="/Users/brianmiller/Desktop/trading_card_data/final10k_cropped",
+                        help='Folder the cropped images are saved to')
+    args = parser.parse_args()
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    for folder_name in FOLDER_NAMES:
+        folder_path = os.path.join(args.parent_dir, folder_name)
+        for filename in os.listdir(folder_path):
+            if not filename.lower().endswith('.jpg'):
+                continue
             with Image.open(os.path.join(folder_path, filename)) as im:
-                
-                # Convert the image to RGB mode
-                im = im.convert("RGB")
-            
-                # Get the dimensions of the image
-                width, height = im.size
-
                 # Skip images smaller than target pixel size
-                if width < target_pixel_size or height < target_pixel_size:
+                if im.width < TARGET_PIXEL_SIZE or im.height < TARGET_PIXEL_SIZE:
                     print(f"Skipping image '{filename}' as its dimensions are smaller than target pixel size.")
                     continue
-                
-                # Step 1: Rotate the image if the x-axis is greater than the y-axis
-                if width > height:
-                    im = im.rotate(90, expand=True)  # Rotate the image by 90 degrees clockwise
-                    width, height = im.size  # Update the image dimensions after rotation
+                cropped_img = crop_image(im)
 
-                # Step 2: Crop the image in the same way
-                # Define the top and bottom crop points
-                crop_top = int(height / 5)
-                crop_bottom = height
-                # Calculate the maximum allowed cropping height as 1/5th of the image height
-                max_crop_height = int(height / 5)
-                # Check if the red rectangular label is present
-                for y in range(height):
-                    # Update the x-axis index based on the resized image
-                    x = width // 2
-                    r, g, b = im.getpixel((x, y))
-                    if r > 100 and g < 0 and b < 0:
-                        # If the red rectangular label is present, update the crop points
-                        if y > height // 2:
-                            # Crop the top of the image
-                            crop_top = 0  # Reset the top crop point to 0
-                            break
-                        else:
-                            # Crop the bottom of the image
-                            crop_top = max(y + max_crop_height, crop_top)
+            # Save the cropped and resized image
+            file_name = os.path.splitext(filename)[0] + "_cropped.jpg"
+            cropped_img.save(os.path.join(args.output_dir, file_name))
 
-                # Ensure the crop point does not exceed the image height
-                crop_top = min(crop_top, height - 1)
-                # Crop the image
-                cropped_img = im.crop((0, crop_top, width, crop_bottom))
 
-                # Step 3: Scale the image to the target pixel size while maintaining its aspect ratio
-                cropped_width, cropped_height = cropped_img.size
-                if cropped_width > target_pixel_size or cropped_height > target_pixel_size:
-                    new_width = 400
-                    new_height = int(new_width * (cropped_height / cropped_width))
-                    cropped_img = cropped_img.resize((new_width, new_height))
-
-                # Save the cropped and resized image
-                file_name = os.path.splitext(filename)[0] + "_cropped.jpg"
-                cropped_img.save(os.path.join(output_dir, file_name))
+if __name__ == '__main__':
+    main()
