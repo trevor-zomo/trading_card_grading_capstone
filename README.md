@@ -19,12 +19,19 @@ combined with custom classification and output layers.
 
 ### Description of CNN:
 ![alt text](https://github.com/BrianMillerS/trading_card_grading_capstone/blob/8e34346d587878d93e483760b70d9115e463eb33/photo_diagram.png)
-- ResNet-50 feeds into three fully connected ReLU dense layers [1024, 512, 128]  
+- ResNet-50 (global average pooled) feeds into three fully connected ReLU dense layers [1024, 512, 128]  
 - The dense layers feed into a single softmax prediction layer  
 
 Two rounds of training were done:
-- First Round: 50 epochs, freeze first 30 layers of ResNet-50
-- Second Round: 50 epochs, unfreeze all layers
+- First Round: 50 epochs, only the dense layers and the last 20 layers of ResNet-50 are trained
+- Second Round: 50 epochs, the last 50 layers of ResNet-50 are unfrozen and fine-tuned at a 10x lower learning rate
+
+### Setup:
+```
+pip install -r requirements.txt
+python RESNET-50.py --n_epochs 50 --droprate 0.025 --base_path /path/to/data
+```
+Each run writes its training log, parameters and saved models to `logs/<timestamp>-<pid>/`.
 
 ### Data:
 All 10k cards were downloaded from [Collectors.com](https://www.collectors.com/trading-cards/sport-baseball-cards/20003?lowgrade=1&highgrade=10&gradingservice=2&page=1)
