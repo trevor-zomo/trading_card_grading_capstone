@@ -157,13 +157,18 @@ class RunCSVLogger(keras.callbacks.CSVLogger):
         super().on_epoch_end(epoch, logs)
 
 
-def make_callbacks(log_dir: Path, learning_rate: float, droprate: float,
-                   early_stopping_patience: int | None) -> list[keras.callbacks.Callback]:
+def make_callbacks(log_dir: Path, learning_rate: float, droprate: float, early_stopping_patience: int | None,
+                   best_val_accuracy: float | None = None) -> list[keras.callbacks.Callback]:
+    """Callbacks for one training round.
+
+    ``best_val_accuracy`` is the best validation accuracy of earlier rounds, so that
+    a later round only replaces the saved best model when it actually beats it.
+    """
     callbacks = [
         RunCSVLogger(str(log_dir / "log.csv"), learning_rate, droprate),
         # keep the best model seen so far, so a run can be evaluated or reused later
         keras.callbacks.ModelCheckpoint(str(log_dir / "best_model.keras"), monitor="val_accuracy",
-                                        save_best_only=True),
+                                        save_best_only=True, initial_value_threshold=best_val_accuracy),
     ]
     if early_stopping_patience is not None:
         callbacks.append(keras.callbacks.EarlyStopping(
@@ -215,15 +220,17 @@ def main(argv: list[str] | None = None) -> None:
     # Round 1: train the dense head and the last few ResNet-50 layers
     set_trainable_layers(base, ROUND_1_TRAINABLE_LAYERS)
     compile_model(model, args.lr_dense)
-    model.fit(train_ds, epochs=args.n_epochs, validation_data=test_ds,
-              callbacks=make_callbacks(log_dir, args.lr_dense, args.droprate, args.early_stopping_patience))
+    first_round = model.fit(
+        train_ds, epochs=args.n_epochs, validation_data=test_ds,
+        callbacks=make_callbacks(log_dir, args.lr_dense, args.droprate, args.early_stopping_patience))
 
     # Round 2: unfreeze more of the ResNet-50 and fine-tune with a lower learning rate
     set_trainable_layers(base, args.unfreeze_after)
     compile_model(model, args.lr_finetune)
     history = model.fit(
         train_ds, epochs=args.n_epochs, validation_data=test_ds,
-        callbacks=make_callbacks(log_dir, args.lr_finetune, args.droprate, args.early_stopping_patience))
+        callbacks=make_callbacks(log_dir, args.lr_finetune, args.droprate, args.early_stopping_patience,
+                                 best_val_accuracy=max(first_round.history["val_accuracy"])))
 
     model.save(log_dir / "final_model.keras")
     mean_diff, median_diff = grade_differential(model, test_ds)

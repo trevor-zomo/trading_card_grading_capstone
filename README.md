@@ -46,6 +46,19 @@ Installing the package adds one command per step of the pipeline:
 Run any command with `--help` for all of its options. Each training run writes its training log, parameters
 and saved models to `logs/<timestamp>-<pid>/`.
 
+### Training on a public dataset:
+The original images are not public, and Collectors.com no longer offers the search they were scraped from.
+[PSA-Baseball-Grades](https://github.com/samsilverman/PSA-Baseball-Grades) is a public set of 11,500 slab photos
+(1,150 per PSA grade, 150x200 pixels) that the pipeline can be run on:
+```
+git clone --depth 1 https://github.com/samsilverman/PSA-Baseball-Grades
+card-grading-crop --parent_dir PSA-Baseball-Grades --output_dir data --target_width 150
+card-grading-train --base_path data --image_height 160 --image_width 160 --batch_size 32 --n_epochs 10 --early_stopping_patience 3
+```
+Things to know about that dataset: its repository states no license, its author warns that some grades are wrong
+and some images are irrelevant, and it contains exact duplicate images (the train/test split sets those aside in
+`data/duplicates/`).
+
 ### Development:
 ```
 ruff check .
