@@ -1,59 +1,40 @@
 #!/bin/bash
+# Grid search over the training settings (needs GNU parallel).
+#   usage: master_train_gridsearch.sh [base_path] [number of runs to train at the same time]
+set -euo pipefail
 
 # Path to the data
 base_path="${1:-/home/data/data_for_model_3}"
-
-# Number of epochs
-n_epochs_list=(35 50)
+jobs="${2:-2}"
 
 # Drop rates
-droprates=(0 0.012 0.025 0.05 0.1 0.2)
+droprates=(0.3 0.5 0.7)
 
-# Learning rates for dense layers
-lr_denses=(0.0001 0.0005 0.001)
+# Starting learning rates for the fine-tuning stage
+lr_finetunes=(0.00001 0.00003 0.0001)
 
-# Batch sizes
-batch_sizes=(16)
+# Spread of the training targets around the true grade (0 = plain one-hot targets)
+label_sigmas=(0 1 1.5)
 
-# Units in the dense layers
-dense1_units_list=(512 1024 2048)
-dense2_units_list=(256 512 1024)
-dense3_units_list=(64 128 256)
-
-# After how many layers from the last of the ResNet50 should the layers be trainable
-# (the first round already trains the last 20 layers, so use values above 20)
-unfreeze_after_list=(30 50 80)
+# How many layers, counted from the last of the ResNet50, are fine-tuned (175 is all of them)
+unfreeze_after_list=(40 80 175)
 
 # Export variables to be used by parallel
 export base_path
 
 # Define the function that will be run in parallel
 run_experiment() {
-  n_epochs=$1
-  droprate=$2
-  lr_dense=$3
-  batch_size=$4
-  dense1_units=$5
-  dense2_units=$6
-  dense3_units=$7
-  unfreeze_after=$8
-
-  # Run the Python script with the current combination of parameters
+  # Run the training with the current combination of parameters
   card-grading-train \
-    --augment \
-    --n_epochs "$n_epochs" \
     --base_path "$base_path" \
-    --droprate "$droprate" \
-    --lr_dense "$lr_dense" \
-    --batch_size "$batch_size" \
-    --dense1_units "$dense1_units" \
-    --dense2_units "$dense2_units" \
-    --dense3_units "$dense3_units" \
-    --unfreeze_after "$unfreeze_after"
+    --droprate "$1" \
+    --lr_finetune "$2" \
+    --label_sigma "$3" \
+    --unfreeze_after "$4"
 }
 
 # Export the function so it can be used by parallel
 export -f run_experiment
 
 # Use GNU parallel to run the experiments in parallel
-parallel -j 6 run_experiment ::: "${n_epochs_list[@]}" ::: "${droprates[@]}" ::: "${lr_denses[@]}" ::: "${batch_sizes[@]}" ::: "${dense1_units_list[@]}" ::: "${dense2_units_list[@]}" ::: "${dense3_units_list[@]}" ::: "${unfreeze_after_list[@]}"
+parallel -j "$jobs" run_experiment ::: "${droprates[@]}" ::: "${lr_finetunes[@]}" ::: "${label_sigmas[@]}" ::: "${unfreeze_after_list[@]}"
