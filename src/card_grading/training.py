@@ -25,7 +25,7 @@ from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
 
 from card_grading.data import CLASS_NAMES, split_into_train_test
 
-# (height, width): the cropped cards are portrait, 400 px wide
+# Default (height, width): the cropped cards are portrait, 400 px wide
 IMAGE_SIZE = (600, 400)
 
 # number of ResNet-50 layers (counted from the end) trained in the first round
@@ -54,6 +54,10 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Number of units in the third additional dense layer")
     parser.add_argument("--unfreeze_after", type=int, default=50,
                         help="How many ResNet50 layers, counted from the last, are trainable in the second round")
+    parser.add_argument("--image_height", type=int, default=IMAGE_SIZE[0],
+                        help="Height in pixels the images are resized to for the model")
+    parser.add_argument("--image_width", type=int, default=IMAGE_SIZE[1],
+                        help="Width in pixels the images are resized to for the model")
     parser.add_argument("--augment", action="store_true",
                         help="Apply random flip/rotation/shift/zoom augmentation to the training images")
     parser.add_argument("--early_stopping_patience", type=int, default=None,
@@ -70,14 +74,15 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def load_dataset(path: Path, batch_size: int, *, shuffle: bool, seed: int) -> tf.data.Dataset:
+def load_dataset(path: Path, batch_size: int, *, shuffle: bool, seed: int,
+                 image_size: tuple[int, int] = IMAGE_SIZE) -> tf.data.Dataset:
     """Load the images below ``path``, labelled by their grade folder, in grade order."""
     return keras.utils.image_dataset_from_directory(
         str(path),
         labels="inferred",
         label_mode="categorical",
         class_names=list(CLASS_NAMES),
-        image_size=IMAGE_SIZE,
+        image_size=image_size,
         batch_size=batch_size,
         shuffle=shuffle,
         seed=seed)
@@ -102,13 +107,13 @@ def prepare(dataset: tf.data.Dataset, *, augment: bool = False) -> tf.data.Datas
                        num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
 
 
-def build_model(dense_units: tuple[int, int, int], droprate: float,
-                weights: str | None = "imagenet") -> tuple[keras.Model, keras.Model]:
+def build_model(dense_units: tuple[int, int, int], droprate: float, weights: str | None = "imagenet",
+                image_size: tuple[int, int] = IMAGE_SIZE) -> tuple[keras.Model, keras.Model]:
     """Build the classifier. Returns ``(resnet50_base, full_model)``."""
-    base = ResNet50(weights=weights, include_top=False, input_shape=IMAGE_SIZE + (3,))
+    base = ResNet50(weights=weights, include_top=False, input_shape=tuple(image_size) + (3,))
 
-    # Pool the feature map instead of flattening it: flattening 19x13x2048 features
-    # into the first dense layer would need ~500M weights
+    # Pool the feature map instead of flattening it: at the default image size, flattening
+    # 19x13x2048 features into the first dense layer would need ~500M weights
     x = layers.GlobalAveragePooling2D()(base.output)
     x = layers.Dense(dense_units[0], activation="relu")(x)
     x = layers.Dropout(droprate)(x)
@@ -152,13 +157,18 @@ class RunCSVLogger(keras.callbacks.CSVLogger):
         super().on_epoch_end(epoch, logs)
 
 
-def make_callbacks(log_dir: Path, learning_rate: float, droprate: float,
-                   early_stopping_patience: int | None) -> list[keras.callbacks.Callback]:
+def make_callbacks(log_dir: Path, learning_rate: float, droprate: float, early_stopping_patience: int | None,
+                   best_val_accuracy: float | None = None) -> list[keras.callbacks.Callback]:
+    """Callbacks for one training round.
+
+    ``best_val_accuracy`` is the best validation accuracy of earlier rounds, so that
+    a later round only replaces the saved best model when it actually beats it.
+    """
     callbacks = [
         RunCSVLogger(str(log_dir / "log.csv"), learning_rate, droprate),
         # keep the best model seen so far, so a run can be evaluated or reused later
         keras.callbacks.ModelCheckpoint(str(log_dir / "best_model.keras"), monitor="val_accuracy",
-                                        save_best_only=True),
+                                        save_best_only=True, initial_value_threshold=best_val_accuracy),
     ]
     if early_stopping_patience is not None:
         callbacks.append(keras.callbacks.EarlyStopping(
@@ -196,26 +206,31 @@ def main(argv: list[str] | None = None) -> None:
     keras.utils.set_random_seed(args.seed)
     log_dir = create_log_dir(args.log_root, args)
 
+    image_size = (args.image_height, args.image_width)
     split_into_train_test(args.base_path, args.seed)
-    train_ds = prepare(load_dataset(args.base_path / "train", args.batch_size, shuffle=True, seed=args.seed),
-                       augment=args.augment)
-    test_ds = prepare(load_dataset(args.base_path / "test", args.batch_size, shuffle=False, seed=args.seed))
+    train_ds = prepare(load_dataset(args.base_path / "train", args.batch_size, shuffle=True, seed=args.seed,
+                                    image_size=image_size), augment=args.augment)
+    test_ds = prepare(load_dataset(args.base_path / "test", args.batch_size, shuffle=False, seed=args.seed,
+                                   image_size=image_size))
 
     weights = None if args.weights.lower() == "none" else args.weights
-    base, model = build_model((args.dense1_units, args.dense2_units, args.dense3_units), args.droprate, weights)
+    base, model = build_model((args.dense1_units, args.dense2_units, args.dense3_units), args.droprate, weights,
+                              image_size)
 
     # Round 1: train the dense head and the last few ResNet-50 layers
     set_trainable_layers(base, ROUND_1_TRAINABLE_LAYERS)
     compile_model(model, args.lr_dense)
-    model.fit(train_ds, epochs=args.n_epochs, validation_data=test_ds,
-              callbacks=make_callbacks(log_dir, args.lr_dense, args.droprate, args.early_stopping_patience))
+    first_round = model.fit(
+        train_ds, epochs=args.n_epochs, validation_data=test_ds,
+        callbacks=make_callbacks(log_dir, args.lr_dense, args.droprate, args.early_stopping_patience))
 
     # Round 2: unfreeze more of the ResNet-50 and fine-tune with a lower learning rate
     set_trainable_layers(base, args.unfreeze_after)
     compile_model(model, args.lr_finetune)
     history = model.fit(
         train_ds, epochs=args.n_epochs, validation_data=test_ds,
-        callbacks=make_callbacks(log_dir, args.lr_finetune, args.droprate, args.early_stopping_patience))
+        callbacks=make_callbacks(log_dir, args.lr_finetune, args.droprate, args.early_stopping_patience,
+                                 best_val_accuracy=max(first_round.history["val_accuracy"])))
 
     model.save(log_dir / "final_model.keras")
     mean_diff, median_diff = grade_differential(model, test_ds)

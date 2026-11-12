@@ -32,6 +32,19 @@ def test_dataset_labels_follow_grade_order(tmp_path):
     assert labels.numpy().argmax(axis=1).tolist() == [9]  # grade 10 is the last class, not the second
 
 
+def test_image_size_is_configurable(tmp_path):
+    for grade in CLASS_NAMES:
+        (tmp_path / grade).mkdir()
+    Image.new("RGB", (40, 60)).save(tmp_path / "2" / "psa2_1_cropped.jpg")
+
+    dataset = training.load_dataset(tmp_path, batch_size=4, shuffle=False, seed=0, image_size=(96, 64))
+    ((images, _),) = list(dataset)
+    _, model = training.build_model((8, 8, 8), droprate=0.1, weights=None, image_size=(96, 64))
+
+    assert images.shape == (1, 96, 64, 3)
+    assert model.input_shape == (None, 96, 64, 3)
+
+
 def test_lr_finetune_defaults_to_a_tenth_of_lr_dense():
     args = training.parse_arguments(["--base_path", "data", "--lr_dense", "0.001"])
     assert args.lr_finetune == pytest.approx(0.0001)
