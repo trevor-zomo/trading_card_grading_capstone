@@ -21,7 +21,8 @@ dense2_units_list=(256 512 1024)
 dense3_units_list=(64 128 256)
 
 # After how many layers from the last of the ResNet50 should the layers be trainable
-unfreeze_after_list=(10 20 30)
+# (the first round already trains the last 20 layers, so use values above 20)
+unfreeze_after_list=(30 50 80)
 
 # Export variables to be used by parallel
 export base_path
@@ -39,15 +40,16 @@ run_experiment() {
 
   # Run the Python script with the current combination of parameters
   python RESNET-50.py \
-    --n_epochs $n_epochs \
-    --base_path $base_path \
-    --droprate $droprate \
-    --lr_dense $lr_dense \
-    --batch_size $batch_size \
-    --dense1_units $dense1_units \
-    --dense2_units $dense2_units \
-    --dense3_units $dense3_units \
-    --unfreeze_after $unfreeze_after
+    --augment \
+    --n_epochs "$n_epochs" \
+    --base_path "$base_path" \
+    --droprate "$droprate" \
+    --lr_dense "$lr_dense" \
+    --batch_size "$batch_size" \
+    --dense1_units "$dense1_units" \
+    --dense2_units "$dense2_units" \
+    --dense3_units "$dense3_units" \
+    --unfreeze_after "$unfreeze_after"
 }
 
 # Export the function so it can be used by parallel

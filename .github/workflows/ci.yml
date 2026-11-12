@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install numpy pillow requests beautifulsoup4 pandas pytest
+      - name: Check that the Python scripts compile
+        run: python -m py_compile RESNET-50.py data_processing/*.py web_scraping/*.py
+      - name: Check shell script syntax
+        run: |
+          for script in *.sh data_processing/*.sh web_scraping/*.sh; do
+            bash -n "$script"
+          done
+      - name: Check that the notebooks are valid JSON
+        run: |
+          for notebook in ipython_notebooks/*.ipynb; do
+            python -m json.tool "$notebook" > /dev/null
+          done
+      - name: Run tests
+        run: pytest tests
