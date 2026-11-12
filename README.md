@@ -18,7 +18,7 @@ combined with custom classification and output layers.
 - Standardize photo dimensions for CNN
 
 ### Description of CNN:
-![alt text](https://github.com/BrianMillerS/trading_card_grading_capstone/blob/8e34346d587878d93e483760b70d9115e463eb33/photo_diagram.png)
+![alt text](readme_photos/photo_diagram.png)
 - ResNet-50 (global average pooled) feeds into three fully connected ReLU dense layers [1024, 512, 128]  
 - The dense layers feed into a single softmax prediction layer  
 
@@ -27,14 +27,45 @@ Two rounds of training were done:
 - Second Round: 50 epochs, the last 50 layers of ResNet-50 are unfrozen and fine-tuned at a 10x lower learning rate
 
 ### Setup:
+The code is one installable Python package, `card_grading` (Python 3.10+):
 ```
-pip install -r requirements.txt
-python RESNET-50.py --n_epochs 50 --droprate 0.025 --base_path /path/to/data
+pip install -e ".[all]"
 ```
-Each run writes its training log, parameters and saved models to `logs/<timestamp>-<pid>/`.
+Smaller installs are available: `.[train]` (TensorFlow), `.[scrape]`, `.[notebooks]` and `.[dev]` (tests and linting).
+
+### Usage:
+Installing the package adds one command per step of the pipeline:
+
+| Step | Command |
+| --- | --- |
+| 1. Scrape images and metadata for one PSA grade | `card-grading-scrape --grade 1 --files_dir ./collection_files --photo_dir ./collection_files/images_psa1` |
+| 2. Crop the PSA label off and standardize the size | `card-grading-crop --parent_dir ./final_10k --output_dir ./final10k_cropped` |
+| 3. Add flipped copies of the training images | `card-grading-flip ./data/train` |
+| 4. Train and evaluate the model | `card-grading-train --n_epochs 50 --droprate 0.025 --base_path ./data` |
+
+Run any command with `--help` for all of its options. Each training run writes its training log, parameters
+and saved models to `logs/<timestamp>-<pid>/`.
+
+### Development:
+```
+ruff check .
+pytest
+```
 
 ### Data:
 All 10k cards were downloaded from [Collectors.com](https://www.collectors.com/trading-cards/sport-baseball-cards/20003?lowgrade=1&highgrade=10&gradingservice=2&page=1)
 
-### Description of Files:  
-![alt text](https://github.com/BrianMillerS/trading_card_grading_capstone/blob/31fcde187ceea1c5c8a3efce8f694628e80596ab/tree_structure.png)
+### Description of Files:
+```
+pyproject.toml            package metadata, dependencies and tool settings
+src/card_grading/
+    data.py               PSA grades, file naming and the train/test split
+    scraping.py           web scraper for Collectors.com
+    cropping.py           PSA label removal and image resizing
+    augmentation.py       flipped copies of the training images
+    training.py           ResNet-50 model, training and evaluation
+scripts/                  shell scripts that run the commands in bulk (dropout sweep, grid search, all grades)
+notebooks/                metadata building, dataset balancing and EDA
+tests/                    unit tests
+testing_data_folder/      a small sample of the dataset, in the layout the training expects
+```

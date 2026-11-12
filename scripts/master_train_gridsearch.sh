@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to the data
-base_path="/home/data/data_for_model_3"
+base_path="${1:-/home/data/data_for_model_3}"
 
 # Number of epochs
 n_epochs_list=(35 50)
@@ -39,7 +39,7 @@ run_experiment() {
   unfreeze_after=$8
 
   # Run the Python script with the current combination of parameters
-  python RESNET-50.py \
+  card-grading-train \
     --augment \
     --n_epochs "$n_epochs" \
     --base_path "$base_path" \
