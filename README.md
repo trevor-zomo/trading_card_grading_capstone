@@ -67,6 +67,16 @@ Things to know about that dataset: its repository states no license, its author 
 and some images are irrelevant, and it contains exact duplicate images (the train/test split sets those aside in
 `data/duplicates/`).
 
+With the commands above, the model reaches the following on the 2,103 test images (guessing at random would get
+10% of the exact grades right):
+
+| Exact grade | Within 1 grade | Within 2 grades | Mean grade difference |
+| --- | --- | --- | --- |
+| 27% | 65% | 82% | 1.5 |
+
+The images are too small to show much of the wear that separates neighbouring grades, and the model is at its
+best on the lowest and highest grades.
+
 ### Development:
 ```
 ruff check .
