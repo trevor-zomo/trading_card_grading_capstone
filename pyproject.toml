@@ -35,6 +35,12 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # deprecation notices raised inside TensorFlow and its dependencies, not by this package
+    "ignore::DeprecationWarning:gast.*",
+    "ignore::DeprecationWarning:keras.*",
+    "ignore::DeprecationWarning:tensorflow.*",
+]
 
 [tool.ruff]
 line-length = 120
