@@ -26,6 +26,7 @@ all = ["card-grading[train,scrape,notebooks,dev]"]
 
 [project.scripts]
 card-grading-scrape = "card_grading.scraping:main"
+card-grading-fetch-psa = "card_grading.psa_api:main"
 card-grading-crop = "card_grading.cropping:main"
 card-grading-flip = "card_grading.augmentation:main"
 card-grading-train = "card_grading.training:main"

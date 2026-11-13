@@ -44,7 +44,7 @@ Installing the package adds one command per step of the pipeline:
 
 | Step | Command |
 | --- | --- |
-| 1. Scrape images and metadata for one PSA grade | `card-grading-scrape --grade 1 --files_dir ./collection_files --photo_dir ./collection_files/images_psa1` |
+| 1. Download PSA's scans and grades of baseball cards | `card-grading-fetch-psa --start_cert 80000000 --count 5000 --output_dir ./final_10k` |
 | 2. Crop the PSA label off and standardize the size | `card-grading-crop --parent_dir ./final_10k --output_dir ./final10k_cropped` |
 | 3. Add flipped copies of the training images | `card-grading-flip ./data/train` |
 | 4. Train and evaluate the model | `card-grading-train --base_path ./data` |
@@ -53,6 +53,21 @@ Run any command with `--help` for all of its options. Each training run writes i
 parameters, test results (`metrics.json`) and the best model (`best_model.keras`) to `logs/<timestamp>-<pid>/`.
 Progress is saved after every epoch: `card-grading-train --base_path ./data --run_dir logs/<run>` continues a run
 that was interrupted.
+
+### Collecting images through the PSA API:
+`card-grading-fetch-psa` uses the [PSA Public API](https://www.psacard.com/publicapi) to look cert numbers up and
+download PSA's own scans of the baseball cards among them, sorted into `psa1` ... `psa10` folders by grade.
+- It needs an API token: sign in at the link above with a PSA account and put the token in the `PSA_API_TOKEN`
+  environment variable.
+- The free tier allows 100 API calls per day and a card takes up to two calls, so a large dataset needs a higher
+  limit from PSA. The download stops cleanly at the limit; running the same command again continues where it stopped.
+- Cards of other categories, half grades and grades with a qualifier (such as OC) are skipped. Every cert number
+  that was looked up is listed in `psa_metadata.csv`.
+- PSA only has scans for certs of recent years. Use `--certs_file` to look up specific cert numbers instead of a range.
+- Check PSA's API agreement before using the images, in particular for training models.
+
+`card-grading-scrape` is the scraper the original dataset was collected with. Collectors.com no longer offers the
+search it reads, so it is kept for reference only.
 
 ### Training on a public dataset:
 The original images are not public, and Collectors.com no longer offers the search they were scraped from.
@@ -91,7 +106,8 @@ All 10k cards were downloaded from [Collectors.com](https://www.collectors.com/t
 pyproject.toml            package metadata, dependencies and tool settings
 src/card_grading/
     data.py               PSA grades, file naming and the train/test split
-    scraping.py           web scraper for Collectors.com
+    psa_api.py            downloader for PSA's scans and grades (PSA Public API)
+    scraping.py           web scraper for Collectors.com (the original data source, no longer online)
     cropping.py           PSA label removal and image resizing
     augmentation.py       flipped copies of the training images
     training.py           ResNet-50 model, training and evaluation
