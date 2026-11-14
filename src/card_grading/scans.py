@@ -58,7 +58,8 @@ def card_mask(scan: np.ndarray) -> np.ndarray:
     return cv2.morphologyEx(mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (size, size)))
 
 
-def find_cards(scan: np.ndarray, dpi: float | None = None) -> tuple[list[tuple], int]:
+def find_cards(scan: np.ndarray, dpi: float | None = None,
+               size_tolerance: float = SIZE_TOLERANCE) -> tuple[list[tuple], int]:
     """Find the cards on an RGB scan.
 
     Returns the rotated rectangles around the cards (as OpenCV gives them: centre, size, angle),
@@ -79,7 +80,7 @@ def find_cards(scan: np.ndarray, dpi: float | None = None) -> tuple[list[tuple],
         card_shaped = (abs(short / long - CARD_ASPECT) <= ASPECT_TOLERANCE
                        and area / (short * long) >= MIN_RECTANGLE_FILL)
         if card_shaped and dpi:
-            card_shaped = abs(long / (CARD_LONG_INCHES * dpi) - 1) <= SIZE_TOLERANCE
+            card_shaped = abs(long / (CARD_LONG_INCHES * dpi) - 1) <= size_tolerance
         if card_shaped:
             candidates.append(rectangle)
         else:
@@ -124,13 +125,17 @@ def extract_card(scan: np.ndarray, rectangle: tuple) -> np.ndarray:
     return cv2.rotate(card, cv2.ROTATE_90_CLOCKWISE) if width > height else card
 
 
-def split_scan(image: Image.Image) -> tuple[list[Image.Image], int]:
-    """The cards on a scan as separate images, and the number of card-sized regions that were left out."""
+def stated_dpi(image: Image.Image) -> float | None:
+    """The resolution an image file states, or ``None`` when it states none that can be trusted."""
     dpi = image.info.get("dpi", (None,))[0]
     # a resolution of 72 or 96 is what software writes when it does not know: no use as a size check
-    dpi = float(dpi) if dpi and float(dpi) >= 150 else None
+    return float(dpi) if dpi and float(dpi) >= 150 else None
+
+
+def split_scan(image: Image.Image) -> tuple[list[Image.Image], int]:
+    """The cards on a scan as separate images, and the number of card-sized regions that were left out."""
     scan = np.asarray(image.convert("RGB"))
-    rectangles, skipped = find_cards(scan, dpi)
+    rectangles, skipped = find_cards(scan, stated_dpi(image))
     return [Image.fromarray(extract_card(scan, rectangle)) for rectangle in rectangles], skipped
 
 

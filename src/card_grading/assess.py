@@ -3,6 +3,7 @@
 USAGE:
     card-grading-assess --images ./cards --output assessment.csv
     card-grading-assess --images ./cards --output assessment.csv --model logs/<run>/best_model.keras
+    card-grading-assess --images ./my_cards/images --pattern "*_front.jpg" --output assessment.csv
 
 Every image should show one card (see ``card-grading-split-scan``). The result is a
 spreadsheet (CSV) with one row per image:
@@ -35,9 +36,10 @@ CENTERING_COLUMNS = ["centering_left_right", "centering_top_bottom", "centering_
 GRADE_COLUMNS = ["grade", "confidence", "within_1", "expected_grade"] + [f"p{grade}" for grade in GRADES]
 
 
-def find_images(folder: Path) -> list[Path]:
-    """The image files in a folder and its subfolders, sorted by path."""
-    return sorted(path for path in folder.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES)
+def find_images(folder: Path, pattern: str = "*") -> list[Path]:
+    """The image files in a folder and its subfolders whose names match the pattern, sorted by path."""
+    return sorted(path for path in folder.rglob(pattern)
+                  if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES)
 
 
 def centering_row(path: Path) -> dict:
@@ -78,9 +80,9 @@ def predict_grades(model_path: Path, paths: list[Path], batch_size: int = 32) ->
     return training.predict_probabilities(model, dataset, flip=True)
 
 
-def assess(images_dir: Path, output: Path, model_path: Path | None = None) -> int:
-    """Write the assessment of every image in ``images_dir`` to ``output``. Returns the number of images."""
-    paths = find_images(images_dir)
+def assess(images_dir: Path, output: Path, model_path: Path | None = None, pattern: str = "*") -> int:
+    """Write the assessment of every matching image in ``images_dir`` to ``output``. Returns the number of images."""
+    paths = find_images(images_dir, pattern)
     rows = [{"file": str(path.relative_to(images_dir))} | centering_row(path) for path in paths]
     columns = ["file"] + CENTERING_COLUMNS
     if model_path is not None and paths:
@@ -99,12 +101,14 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Measure the centring of card images and estimate their grades")
     parser.add_argument("-i", "--images", type=Path, required=True, help="Folder of card images, one card per image")
     parser.add_argument("-o", "--output", type=Path, required=True, help="CSV file to write")
+    parser.add_argument("-p", "--pattern", default="*",
+                        help="Only assess files whose name matches, e.g. '*_front.jpg' for the fronts in a library")
     parser.add_argument("-m", "--model", type=Path, default=None,
                         help="A trained model (best_model.keras of a training run) to estimate grades with")
     args = parser.parse_args(argv)
     if not args.images.is_dir():
         raise SystemExit(f"Not a folder: {args.images}")
-    count = assess(args.images, args.output, args.model)
+    count = assess(args.images, args.output, args.model, args.pattern)
     print(f"{count} image(s) assessed, results in {args.output}")
 
 
