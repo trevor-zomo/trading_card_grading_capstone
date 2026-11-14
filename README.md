@@ -55,8 +55,39 @@ parameters, test results (`metrics.json`) and the best model (`best_model.keras`
 Progress is saved after every epoch: `card-grading-train --base_path ./data --run_dir logs/<run>` continues a run
 that was interrupted.
 
-### Assessing your own cards:
-Two commands turn scans of loose cards into a spreadsheet:
+### Scanning your own cards into a library:
+`card-grading-scan` builds a card library: a folder with one image of the front and one of the back of every
+card, and a catalogue (`cards.csv`) with one row per card.
+```
+my_cards/cards.csv
+my_cards/images/box01/box01-0001_front.jpg
+my_cards/images/box01/box01-0001_back.jpg
+```
+It is meant for a sheet-fed duplex scanner such as the Epson FastFoto FF-680W, and works in two ways:
+```
+# scan the cards in the feeder directly
+card-grading-scan --library ./my_cards --batch box01
+
+# or import the folder the scanner's own software saved to
+card-grading-scan --library ./my_cards --batch box01 --from_folder ./fastfoto_output
+```
+- Scanning directly needs SANE's `scanimage` (the `sane-backends` package on Linux and macOS), whose `epsonds`
+  driver lists the FF-680W as supported over USB. It scans both sides at 600 dpi and asks the driver to straighten
+  and crop each card. On Windows, scan with Epson's software and use `--from_folder`.
+- `--from_folder` understands Epson FastFoto's file names (`name.jpg` for the front, `name_b.jpg` for the back; the
+  enhanced `name_a.jpg` copies are ignored) and plain page sequences in which fronts and backs alternate. Turn on
+  scanning of the backs in the scanner software.
+- Use the same `--batch` name again for the next feeder load of the same box: the numbering continues.
+- Every image is cropped to the card and turned upright when the card can be told apart from what is around it.
+  Cards where that failed, or whose back is missing, are marked `needs_review` in the catalogue with a note.
+
+Then assess the fronts:
+```
+card-grading-assess --images ./my_cards/images --pattern "*_front.jpg" --output ./my_cards/assessment.csv
+```
+
+### Assessing card images:
+Two commands turn flatbed scans or photos of loose cards into a spreadsheet:
 ```
 card-grading-split-scan ./scans --output_dir ./cards
 card-grading-assess --images ./cards --output assessment.csv --model logs/<run>/best_model.keras
@@ -130,6 +161,7 @@ src/card_grading/
     psa_api.py            downloader for PSA's scans and grades (PSA Public API)
     scraping.py           web scraper for Collectors.com (the original data source, no longer online)
     cropping.py           PSA label removal and image resizing
+    capture.py            scans cards with a sheet-fed scanner, or imports its scans, into a card library
     scans.py              cuts a scan of several cards into one image per card
     centering.py          measures how well a card's picture is centred between its borders
     assess.py             centring and estimated grade for a folder of card images

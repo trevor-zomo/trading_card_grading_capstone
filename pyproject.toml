@@ -31,6 +31,7 @@ card-grading-fetch-psa = "card_grading.psa_api:main"
 card-grading-crop = "card_grading.cropping:main"
 card-grading-flip = "card_grading.augmentation:main"
 card-grading-train = "card_grading.training:main"
+card-grading-scan = "card_grading.capture:main"
 card-grading-split-scan = "card_grading.scans:main"
 card-grading-assess = "card_grading.assess:main"
 
