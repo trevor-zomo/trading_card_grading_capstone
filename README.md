@@ -37,7 +37,8 @@ The code is one installable Python package, `card_grading` (Python 3.10+):
 ```
 pip install -e ".[all]"
 ```
-Smaller installs are available: `.[train]` (TensorFlow), `.[scrape]`, `.[notebooks]` and `.[dev]` (tests and linting).
+Smaller installs are available: `.[train]` (TensorFlow), `.[scrape]`, `.[scan]` (OpenCV, for splitting scans),
+`.[notebooks]` and `.[dev]` (tests and linting).
 
 ### Usage:
 Installing the package adds one command per step of the pipeline:
@@ -53,6 +54,24 @@ Run any command with `--help` for all of its options. Each training run writes i
 parameters, test results (`metrics.json`) and the best model (`best_model.keras`) to `logs/<timestamp>-<pid>/`.
 Progress is saved after every epoch: `card-grading-train --base_path ./data --run_dir logs/<run>` continues a run
 that was interrupted.
+
+### Assessing your own cards:
+Two commands turn scans of loose cards into a spreadsheet:
+```
+card-grading-split-scan ./scans --output_dir ./cards
+card-grading-assess --images ./cards --output assessment.csv --model logs/<run>/best_model.keras
+```
+- `card-grading-split-scan` cuts every scan in a folder into one straightened, upright image per card, numbered row
+  by row. Put the cards on a plain background that contrasts with their edges (black paper behind white-bordered
+  cards) and leave a gap between them: cards that touch are left out and reported. Flatbed scans at 300 dpi or
+  more work best; photos taken from straight above work too.
+- `card-grading-assess` writes one row per card image with its centring (the left/right and top/bottom borders as
+  shares, such as `45/55`) and, when a trained model is given with `--model`, the estimated grade, how confident the
+  model is, and the probability of every grade. Without `--model` only the centring is measured, which needs no
+  TensorFlow.
+- The centring is only meaningful for a single card cropped to its edges that has a plain border around its picture.
+- A model trained on photos of cards in PSA cases has not seen loose cards, so treat its grades for those as rough
+  hints until it has been trained on images like yours.
 
 ### Collecting images through the PSA API:
 `card-grading-fetch-psa` uses the [PSA Public API](https://www.psacard.com/publicapi) to look cert numbers up and
@@ -111,6 +130,9 @@ src/card_grading/
     psa_api.py            downloader for PSA's scans and grades (PSA Public API)
     scraping.py           web scraper for Collectors.com (the original data source, no longer online)
     cropping.py           PSA label removal and image resizing
+    scans.py              cuts a scan of several cards into one image per card
+    centering.py          measures how well a card's picture is centred between its borders
+    assess.py             centring and estimated grade for a folder of card images
     augmentation.py       flipped copies of the training images
     training.py           ResNet-50 model, training and evaluation
 scripts/                  shell scripts that run the commands in bulk (dropout sweep, grid search, all grades)
