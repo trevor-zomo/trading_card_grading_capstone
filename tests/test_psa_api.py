@@ -158,6 +158,19 @@ def test_wrong_token_stops_with_an_error(tmp_path):
         psa_api.fetch_certs(psa_api.PsaClient("secret-token", session=Rejecting({})), [100], tmp_path)
 
 
+def test_account_without_api_access_stops_with_psas_message(tmp_path):
+    class NotApproved(FakeSession):
+        def get(self, url, headers=None, timeout=None):
+            self.api_calls.append(url)
+            return FakeResponse(403, text='{"Message":"Access to this API is limited to approved customers."}')
+
+    session = NotApproved({})
+    with pytest.raises(psa_api.PsaApiError, match="limited to approved customers"):
+        psa_api.fetch_certs(psa_api.PsaClient("secret-token", session=session), [100, 101], tmp_path)
+    assert len(session.api_calls) == 1          # no retries and no further certs after a refusal
+    assert not (tmp_path / psa_api.METADATA_FILE).exists()
+
+
 def test_main_needs_a_token(tmp_path, monkeypatch):
     monkeypatch.delenv(psa_api.TOKEN_VARIABLE, raising=False)
     with pytest.raises(SystemExit, match=psa_api.TOKEN_VARIABLE):

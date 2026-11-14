@@ -10,9 +10,10 @@ category (baseball by default) with a whole-number grade from 1 to 10 are downlo
 ``<output_dir>/psa<grade>/card<cert>_PSA<grade>.jpg``, which is the layout ``card-grading-crop``
 reads. What happened to every cert number is recorded in ``<output_dir>/psa_metadata.csv``.
 
-The API allows a limited number of calls per day (100 on the free tier). The download stops
-cleanly when the limit is reached; run the same command again later and it carries on with
-the cert numbers that were not looked up yet.
+A token alone is not enough: PSA only answers accounts it has approved for the API (others get
+"Access to this API is limited to approved customers."). The API also allows a limited number
+of calls per day. The download stops cleanly when the limit is reached; run the same command
+again later and it carries on with the cert numbers that were not looked up yet.
 
 Check PSA's API agreement before using the images, in particular for training models.
 """
@@ -150,7 +151,10 @@ class PsaClient:
             if response.status_code == 429:
                 raise QuotaExceeded(f"PSA says the call limit is reached: {response.text.strip()[:200]}")
             if response.status_code in (401, 403):
-                raise PsaApiError(f"PSA rejected the token (HTTP {response.status_code})")
+                # e.g. "Access to this API is limited to approved customers." for an account
+                # that has a token but has not been given API access by PSA
+                raise PsaApiError(f"PSA refused the request (HTTP {response.status_code}): "
+                                  f"{response.text.strip()[:200]}")
             if response.status_code >= 500 and attempt < MAX_ATTEMPTS:
                 continue
             if response.status_code >= 400:
@@ -281,7 +285,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--backs", action="store_true",
                         help="Also download the scans of the backs, into a separate backs/ folder")
     parser.add_argument("--max_calls", type=int, default=FREE_TIER_CALLS_PER_DAY,
-                        help="Stop after this many API calls (the free tier allows 100 per day)")
+                        help="Stop after this many API calls (PSA's standard limit is 100 per day)")
     args = parser.parse_args(argv)
 
     token = os.environ.get(TOKEN_VARIABLE)

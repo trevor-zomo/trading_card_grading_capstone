@@ -57,10 +57,12 @@ that was interrupted.
 ### Collecting images through the PSA API:
 `card-grading-fetch-psa` uses the [PSA Public API](https://www.psacard.com/publicapi) to look cert numbers up and
 download PSA's own scans of the baseball cards among them, sorted into `psa1` ... `psa10` folders by grade.
-- It needs an API token: sign in at the link above with a PSA account and put the token in the `PSA_API_TOKEN`
-  environment variable.
-- The free tier allows 100 API calls per day and a card takes up to two calls, so a large dataset needs a higher
-  limit from PSA. The download stops cleanly at the limit; running the same command again continues where it stopped.
+- It needs an API token: sign in at the link above with a PSA account, generate the token on the documentation
+  page and put it in the `PSA_API_TOKEN` environment variable.
+- A token alone is not enough. PSA only answers accounts it has approved for the API; others get
+  "Access to this API is limited to approved customers." Ask PSA for access (`collectors-apis@collectors.com`).
+- PSA's standard limit is 100 API calls per day and a card takes up to two calls, so a large dataset needs a higher
+  limit as well. The download stops cleanly at the limit; running the same command again continues where it stopped.
 - Cards of other categories, half grades and grades with a qualifier (such as OC) are skipped. Every cert number
   that was looked up is listed in `psa_metadata.csv`.
 - PSA only has scans for certs of recent years. Use `--certs_file` to look up specific cert numbers instead of a range.
